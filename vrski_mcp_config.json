@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "vrski": {
+      "command": "python",
+      "args": ["-m", "vrski.mcp.server"],
+      "env": {
+        "VRSKI_API_URL": "http://localhost:7070"
+      }
+    }
+  }
+}

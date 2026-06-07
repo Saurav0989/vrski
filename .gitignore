@@ -1,0 +1,46 @@
+# ── Credentials — NEVER commit ──────────────────────────────
+.env
+.env.*
+*.env
+
+# ── Local agent / IDE settings ──────────────────────────────
+.claude/
+.vscode/
+.idea/
+
+# ── Python ──────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.eggs/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+
+# ── Databases / runtime state ───────────────────────────────
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# ── Android / emulator artifacts ────────────────────────────
+*.png
+tmp_*.png
+tmp_install_fail_*.png
+tmp_auth_fail_*.png
+
+# ── Debug / test output ─────────────────────────────────────
+install_result.json
+*_result.json
+
+# ── OS junk ─────────────────────────────────────────────────
+.DS_Store
+**/.DS_Store
+Thumbs.db
