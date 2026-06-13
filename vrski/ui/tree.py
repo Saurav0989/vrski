@@ -7,7 +7,7 @@ have raw XML but no live device connection.
 """
 from typing import List
 from vrski.ui.driver import parse_bounds
-from vrski.ui.element import UIElement, Bounds
+from vrski.ui.element import UIElement, Bounds, is_editable_type
 import xml.etree.ElementTree as ET
 import logging
 
@@ -34,11 +34,7 @@ def parse_tree(xml_str: str) -> List[UIElement]:
 
             clickable = attrib.get("clickable", "false").lower() == "true"
             scrollable = attrib.get("scrollable", "false").lower() == "true"
-            editable = (
-                "EditText" in element_type
-                or element_type in ["AutoCompleteTextView", "MultiAutoCompleteTextView", "SearchAutoComplete"]
-                or (attrib.get("focusable", "false").lower() == "true" and "TextView" not in element_type)
-            )
+            editable = is_editable_type(element_type)
 
             elements.append(UIElement(
                 element_id=element_id,

@@ -88,47 +88,55 @@ def poll_for_element_conditions(driver, timeout_s: float = 15.0) -> Tuple[Option
     return None, driver.get_tree()
 
 
-def dismiss_popups(session_id: str) -> bool:
-    """
-    Detects and dismisses common Android popups that can interrupt automation.
-    Checks for and dismisses: permission requests, update prompts,
-    'App not responding' dialogs, Play Store update banners.
+# Dismissal labels in PREFERENCE order: grant permissions so the app works,
+# then neutral acknowledgements, then "later/skip" style, and only as a last
+# resort negative answers. Matched against an element's text OR content_desc
+# (case-insensitive, exact). Deliberately excludes destructive labels
+# (Delete/Remove/Uninstall/etc.) so we never tap something harmful.
+SAFE_DISMISS_LABELS = [
+    "allow", "allow all", "while using the app", "only this time",
+    "got it", "ok", "okay", "continue", "accept", "accept all",
+    "agree", "i agree", "no thanks", "no, thanks", "not now",
+    "maybe later", "later", "skip", "skip for now", "dismiss", "close",
+    "done", "don't allow", "deny",
+]
 
-    WARNING: Do not use personal Gmail. Use a dedicated Vrski account.
+
+def dismiss_popups(session_id: str, max_rounds: int = 3) -> bool:
+    """Detects and dismisses blocking dialogs/overlays that interrupt automation.
+
+    Handles permission prompts, coachmarks, "rate this app", update banners,
+    onboarding acknowledgements, etc. Matches by text OR content_desc, taps via the
+    element's center (so a label inside a clickable parent still works), and loops a
+    few times to clear stacked dialogs. Never taps destructive labels.
     """
     driver = SessionManager.get_driver(session_id)
-    if not driver:
+    if not driver or not hasattr(driver, "get_tree"):
         return False
 
     dismissed_any = False
-    tree = driver.get_tree() if hasattr(driver, 'get_tree') else []
-
-    # Common popup dismiss patterns
-    dismiss_texts = [
-        "Allow",        # Permission requests
-        "While using the app",  # Location/camera permission
-        "Deny",         # Permission deny fallback
-        "Wait",         # App not responding
-        "Not now",      # Update prompts
-        "No thanks",    # Optional feature prompts
-        "Skip",         # Setup wizards
-        "Got it",       # Tutorial overlays
-        "Accept",       # Terms/conditions
-        "OK",           # Generic dismissal
-        "Close",        # Close buttons
-        "Maybe later",  # Rate this app
-    ]
-
-    for dismiss_text in dismiss_texts:
+    for _ in range(max_rounds):
+        tree = driver.get_tree() or []
+        # Index elements by their normalized label for preference-ordered lookup.
+        by_label: Dict[str, Any] = {}
         for el in tree:
-            el_text = getattr(el, 'text', '') or ''
-            el_clickable = getattr(el, 'clickable', False)
-            if el_text == dismiss_text and el_clickable:
-                logger.info(f"Dismissing popup with button: '{dismiss_text}'")
-                if hasattr(driver, 'tap'):
-                    driver.tap(el)
-                    dismissed_any = True
-                break
+            label = (getattr(el, "text", "") or getattr(el, "content_desc", "") or "").strip().lower()
+            if label and label not in by_label:
+                by_label[label] = el
+
+        target = next((by_label[l] for l in SAFE_DISMISS_LABELS if l in by_label), None)
+        if not target:
+            break
+
+        shown = getattr(target, "text", "") or getattr(target, "content_desc", "")
+        logger.info(f"Dismissing blocker: '{shown}'")
+        try:
+            driver.tap(target)  # center-tap handles labels nested in a clickable parent
+            dismissed_any = True
+        except Exception as e:
+            logger.warning(f"Failed to tap blocker '{shown}': {e}")
+            break
+        time.sleep(0.6)
 
     return dismissed_any
 

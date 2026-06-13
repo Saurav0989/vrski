@@ -4,6 +4,27 @@ import logging
 
 logger = logging.getLogger("vrski.ui.element")
 
+EDITABLE_TYPES = {
+    "EditText",
+    "AutoCompleteTextView",
+    "MultiAutoCompleteTextView",
+    "SearchAutoComplete",
+    "TextInputEditText",
+    "AppCompatEditText",
+}
+
+
+def is_editable_type(element_type: str) -> bool:
+    """True only for real text-input widget classes.
+
+    Deliberately does NOT treat 'focusable non-TextView' as editable — that
+    heuristic flagged ordinary clickable Views as input fields (finding #5),
+    which made `editable` useless as a signal for agents.
+    """
+    et = element_type or ""
+    return "EditText" in et or et in EDITABLE_TYPES
+
+
 @dataclass
 class Bounds:
     left: int
