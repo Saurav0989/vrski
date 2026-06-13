@@ -113,6 +113,19 @@ def _tap_rank(el) -> int:
         score += 2
     return score
 
+
+def _signature(tree) -> Optional[int]:
+    """A cheap fingerprint of a screen, to detect whether an action changed
+    anything — so agents can break out of no-progress loops."""
+    try:
+        parts = []
+        for el in tree:
+            t, i, d, _, _ = _el_fields(el)
+            parts.append(f"{t}|{i}|{d}")
+        return hash(tuple(sorted(parts)))
+    except Exception:
+        return None
+
 @router.post("/session/{id}/action")
 def execute_action(
     action: ActionRequest,
@@ -162,14 +175,18 @@ def execute_action(
 
             # When several elements share the same label, prefer the actionable
             # target over an input field that merely echoes the text.
+            before_sig = _signature(tree)
             matched = max(candidates, key=_tap_rank)
             res = driver.tap(matched)
             matched_id = matched.get("id") if isinstance(matched, dict) else getattr(matched, "element_id", getattr(matched, "id", None))
+            after_sig = _signature(driver.get_tree())
             result = {
                 "success": res.get("success", True) if isinstance(res, dict) else True,
                 "matched_element": matched_id,
                 "matched_count": len(candidates),
             }
+            if before_sig is not None and after_sig is not None:
+                result["screen_changed"] = before_sig != after_sig
             if len(candidates) > 1:
                 result["ambiguous"] = True
             return result
@@ -177,6 +194,7 @@ def execute_action(
         elif action.type == "type":
             if action.text is None:
                 raise HTTPException(status_code=400, detail="text is required for type action")
+            before_sig = _signature(driver.get_tree())
             res = driver.type_text(action.text, clear_first=action.clear_first)
             success = res.get("success", True) if isinstance(res, dict) else bool(res)
             if not success:
@@ -185,7 +203,11 @@ def execute_action(
                     "error": "No focused input field to type into. Tap a text field first, then type.",
                     "screenshot_base64": _capture_screenshot(driver),
                 }
-            return {"success": True}
+            after_sig = _signature(driver.get_tree())
+            out = {"success": True}
+            if before_sig is not None and after_sig is not None:
+                out["screen_changed"] = before_sig != after_sig
+            return out
             
         elif action.type == "swipe":
             if action.direction is None:

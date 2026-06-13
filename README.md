@@ -2,16 +2,18 @@
 
 > **Built for agents. Not adapted for them.**
 
-Vrski gives AI agents programmatic access to a real Android device through tool calls. No screenshots. No vision models. No pixel coordinates.
+Vrski gives AI agents programmatic access to a real Android device through tool calls. It is **semantic-first, vision-backed**.
 
-Every app on Android already exposes its entire UI as an accessibility tree — a structured hierarchy of elements with types, labels, resource IDs, bounds, and interaction flags. Vrski intercepts that tree and hands it to your agent as clean JSON. The agent reads meaning, not pixels.
+**Semantic-first:** every app on Android exposes its UI as an accessibility tree — a structured hierarchy of elements with types, labels, resource IDs, bounds, and interaction flags. Vrski intercepts that tree and hands it to your agent as clean JSON, so the agent reads *meaning*, not pixels — no vision model needed for the vast majority of screens.
+
+**Vision-backed:** some screens don't describe themselves in the tree — WebView content (article/page bodies), parts of Compose/Flutter UIs, and games expose little or nothing. On those, Vrski automatically attaches a screenshot and flags the screen (`low_signal` / `has_webview`) so the agent can fall back to looking and tap by coordinates. Semantic when it can, visual when it must.
 
 ```
 Agent calls vrski_get_screen()
 → gets { type: "Button", text: "Log In", id: "com.app:id/login_btn", clickable: true }
 → calls vrski_tap(text="Log In")
 → Vrski resolves coordinates internally, taps, confirms
-→ Agent never sees a pixel
+→ Agent acts on meaning — pixels only when the tree can't describe the screen
 ```
 
 ---
@@ -33,12 +35,12 @@ Agent calls vrski_get_screen()
 | Read UI | Vision model interprets pixels | Direct JSON from accessibility API |
 | Tap accuracy | Coordinate-based, breaks on layout changes | Text / ID / desc — always finds the right target |
 | Speed | Screenshot → vision call → decision | UI tree → decision, no vision API |
-| Cost | Vision API call every action | Zero vision API calls |
-| Reliability | Hallucinations, wrong taps | Deterministic — element exists or it doesn't |
+| Cost | Vision API call every action | Vision only as a fallback, not every action |
+| Reliability | Hallucinations, wrong taps | Deterministic where the tree describes the screen; screenshot fallback where it doesn't |
 | Parallelism | One stream | Multiple sessions, unlimited agents |
 | Audit trail | Screenshots (large, ambiguous) | Structured JSON log of every action |
 
-Vrski is the correct interface for agents operating on Android. It is what accessibility tools use, and agents are accessibility tools.
+Vrski is the correct interface for agents operating on Android. It is what accessibility tools use, and agents are accessibility tools — with a screenshot fallback for the screens accessibility can't reach.
 
 ---
 
@@ -300,19 +302,44 @@ vrski_get_session_status(session_id: str)
 ### Screen
 
 ```python
-vrski_get_screen(session_id: str, include_screenshot: bool = False)
+vrski_get_screen(session_id: str, include_screenshot: bool = False, salient: bool = True)
+# Returns only agent-relevant elements by default (drops empty layout containers,
+# the system status bar, and soft-keyboard keys). Pass salient=False for the raw tree.
+# A screenshot is auto-attached when the tree can't describe the screen.
 # → {
 #     "elements": [{ "id", "type", "text", "content_desc",
 #                    "clickable", "scrollable", "editable",
 #                    "bounds": { "left","top","right","bottom" } }],
+#     "element_count": int,        # after the salient filter
+#     "raw_element_count": int,    # before filtering
+#     "salient": bool,
+#     "has_webview": bool,         # content likely NOT in the tree — look instead
+#     "low_signal": bool,          # too few readable elements — look instead
+#     "vision_hint": str | None,   # set when you should reason from the screenshot
 #     "package": str,
 #     "activity": str,
 #     "screenshot_base64": str | None
 #   }
 
+vrski_look(session_id: str)
+# The vision-backed view: salient tree + a screenshot, together. Use on WebView /
+# Compose / game screens, or when get_screen returns has_webview/low_signal.
+
 vrski_wait_for_element(session_id: str, text: str = None, element_id: str = None, timeout: int = 15)
 # → { "found": bool, "element": UIElement | None }
+
+vrski_wait_stable(session_id: str, timeout: int = 10, settle_ms: int = 500)
+# Wait until the screen stops changing (two identical UI dumps). Use after launching
+# an app or triggering a transition, instead of a fixed sleep.
+# → { "stable": bool, "elapsed_s": float, "polls": int }
 ```
+
+**Tap & type now report progress.** `vrski_tap` returns `matched_count` and
+`ambiguous` (when a label matches several elements it picks the actionable target,
+not an input field that merely echoes the text), and both `vrski_tap` and
+`vrski_type` return `screen_changed: bool` so you can detect a no-op and avoid
+looping. `vrski_type` fails loudly (`success: false` + screenshot) if no input field
+is focused — it will not silently type into nothing.
 
 **Agent guidance:** always call `vrski_get_screen` before deciding what to tap. Never assume what's on screen.
 
