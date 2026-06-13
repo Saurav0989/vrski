@@ -51,10 +51,42 @@ def serialize_element(el) -> dict:
         "bounds": bounds_dict
     }
 
+# Resource-id markers for pure chrome that floods the tree without being a task
+# target: the system status bar, soft-keyboard keys, and system bar backgrounds.
+_NOISE_ID_MARKERS = (
+    "com.android.systemui",
+    "key_pos",
+    "inputmethod",
+    "navigationBarBackground",
+    "statusBarBackground",
+)
+
+
+def _is_salient(el: dict) -> bool:
+    """True if an element is worth showing an agent by default.
+
+    Drops textless, non-interactive layout containers (the empty FrameLayout/
+    LinearLayout/View wrappers that make up most of a raw dump), the system status
+    bar, and soft-keyboard keys. Anything carrying text or a content description,
+    or that is clickable/scrollable/editable, is kept.
+    """
+    idn = el.get("id") or ""
+    if any(marker in idn for marker in _NOISE_ID_MARKERS):
+        return False
+    return bool(
+        el.get("text")
+        or el.get("content_desc")
+        or el.get("clickable")
+        or el.get("scrollable")
+        or el.get("editable")
+    )
+
+
 @router.get("/session/{id}/screen")
 def get_screen(
     id: str = Path(..., pattern=r"^[a-zA-Z0-9_\-]+$"),
     include_screenshot: bool = False,
+    salient: bool = True,
     db: DBSession = Depends(get_db)
 ):
     try:
@@ -71,7 +103,11 @@ def get_screen(
             
         raw_elements = driver.get_tree()
         elements = [serialize_element(el) for el in raw_elements]
-        
+        raw_element_count = len(elements)
+        # By default return only agent-relevant elements; raw tree via salient=false.
+        if salient:
+            elements = [el for el in elements if _is_salient(el)]
+
         package = "unknown"
         activity = "unknown"
 
@@ -121,6 +157,9 @@ def get_screen(
         return {
             "success": True,
             "elements": elements,
+            "element_count": len(elements),
+            "raw_element_count": raw_element_count,
+            "salient": salient,
             "package": package,
             "activity": activity,
             "screenshot_base64": screenshot_base64

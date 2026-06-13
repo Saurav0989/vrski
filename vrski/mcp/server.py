@@ -80,16 +80,22 @@ async def vrski_get_session_status(session_id: str) -> dict:
 
 
 @mcp.tool()
-async def vrski_get_screen(session_id: str, include_screenshot: bool = False) -> dict:
+async def vrski_get_screen(session_id: str, include_screenshot: bool = False, salient: bool = True) -> dict:
     """Gets the current screen state as a structured list of visible UI elements.
+
+    By default returns only agent-relevant elements (text-bearing or interactive),
+    dropping empty layout containers, the system status bar, and soft-keyboard keys.
+    The response includes element_count and raw_element_count so you can see how much
+    was filtered. Set salient=False to get the full raw accessibility tree.
 
     Args:
         session_id: The unique identifier for the automation session.
         include_screenshot: Whether to include the base64-encoded visual frame screenshot in the response.
+        salient: When True (default), filter out non-interactive chrome/noise. Set False for the raw tree.
     """
     t0 = time.time()
-    result = await client.get(f"/session/{session_id}/screen", params={"include_screenshot": include_screenshot})
-    _log_tool_call("vrski_get_screen", {"include_screenshot": include_screenshot}, result, (time.time() - t0) * 1000, session_id)
+    result = await client.get(f"/session/{session_id}/screen", params={"include_screenshot": include_screenshot, "salient": salient})
+    _log_tool_call("vrski_get_screen", {"include_screenshot": include_screenshot, "salient": salient}, result, (time.time() - t0) * 1000, session_id)
     return result
 
 

@@ -223,15 +223,20 @@ class DeviceDriver:
         if not self._ensure_connected():
             logger.error(f"Cannot send keys '{text}': connection lost.")
             return False
-        # Try uiautomator2 set_text on focused element first (most reliable)
+        # Require a focused field. Typing into nothing must fail loudly rather than
+        # silently no-op: `adb input text` returns success even with no focused
+        # input, so an agent would believe it typed when nothing happened.
+        focused_el = self.d(focused=True)
+        if not focused_el.wait(timeout=3.0):
+            logger.warning("send_keys: no focused input field on screen; refusing to type into nothing.")
+            return False
+        # A field has focus — set_text is most reliable; fall back to `adb input
+        # text` only because we've confirmed a field is focused to receive the keys.
         try:
-            focused_el = self.d(focused=True)
-            if focused_el.wait(timeout=3.0):
-                focused_el.set_text(text)
-                return True
+            focused_el.set_text(text)
+            return True
         except Exception as e:
-            logger.warning(f"set_text on focused element failed: {e}")
-        # Fallback: use ADB shell input text
+            logger.warning(f"set_text on focused element failed: {e}; trying adb input text")
         try:
             import subprocess
             escaped = text.replace(" ", "%s").replace("'", "\\'").replace('"', '\\"')
