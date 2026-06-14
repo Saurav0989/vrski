@@ -47,3 +47,6 @@ Thumbs.db
 
 # ── Private planning docs (keep local, never publish) ───────
 plans/
+
+# ── Audit logs (runtime; may contain task detail) ───────────
+audit/

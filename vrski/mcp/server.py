@@ -153,6 +153,85 @@ async def vrski_check_wall(session_id: str) -> dict:
 
 
 @mcp.tool()
+async def vrski_approve(session_id: str, pending_id: str, approved: bool = True) -> dict:
+    """Approve (or deny) a pending sensitive action that vrski_tap returned as
+    `approval_required`.
+
+    Call this ONLY after the OWNER has explicitly said yes — it represents the
+    owner's consent, not your own. `approved=False` discards the action. On approval
+    the gated tap (pay / send / delete / …) is executed.
+
+    Args:
+        session_id: The unique identifier for the automation session.
+        pending_id: The id from the `approval_required` response.
+        approved: True to execute, False to discard.
+    """
+    return await client.post(f"/session/{session_id}/approve", json={"pending_id": pending_id, "approved": approved})
+
+
+@mcp.tool()
+async def vrski_set_policy(
+    session_id: str,
+    require_approval_for_sensitive: Optional[bool] = None,
+    dry_run: Optional[bool] = None,
+    blocked_labels: Optional[list] = None,
+    max_sensitive_actions: Optional[int] = None,
+) -> dict:
+    """Set the trust policy for this session.
+
+    - require_approval_for_sensitive (default true): gate pay/send/delete behind owner approval.
+    - dry_run: narrate sensitive actions without executing them.
+    - blocked_labels: labels that never execute, even if approved.
+    - max_sensitive_actions: cap on how many sensitive actions this session may perform.
+
+    Args:
+        session_id: The automation session id; plus any fields you want to change.
+    """
+    body = {}
+    if require_approval_for_sensitive is not None:
+        body["require_approval_for_sensitive"] = require_approval_for_sensitive
+    if dry_run is not None:
+        body["dry_run"] = dry_run
+    if blocked_labels is not None:
+        body["blocked_labels"] = blocked_labels
+    if max_sensitive_actions is not None:
+        body["max_sensitive_actions"] = max_sensitive_actions
+    return await client.post(f"/session/{session_id}/policy", json=body)
+
+
+@mcp.tool()
+async def vrski_get_audit(session_id: str, limit: int = 100) -> dict:
+    """Return the replayable, secret-free audit log for this session — every action,
+    approval/denial, and policy/pause change.
+
+    Args:
+        session_id: The unique identifier for the automation session.
+        limit: Max number of most-recent entries to return.
+    """
+    return await client.get(f"/session/{session_id}/audit", params={"limit": limit})
+
+
+@mcp.tool()
+async def vrski_pause(session_id: str) -> dict:
+    """Kill-switch: pause the session — blocks ALL actions until vrski_resume.
+
+    Args:
+        session_id: The unique identifier for the automation session.
+    """
+    return await client.post(f"/session/{session_id}/pause")
+
+
+@mcp.tool()
+async def vrski_resume(session_id: str) -> dict:
+    """Resume a paused session so actions can run again.
+
+    Args:
+        session_id: The unique identifier for the automation session.
+    """
+    return await client.post(f"/session/{session_id}/resume")
+
+
+@mcp.tool()
 async def vrski_wait_for_element(
     session_id: str, 
     text: Optional[str] = None, 
