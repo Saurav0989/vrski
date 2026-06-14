@@ -96,4 +96,7 @@ from vrski.recipes import RECIPES as _RECIPES, as_eval_flow as _as_eval_flow  # 
 # each run, so it guards cleanly.
 FLOWS += [
     _as_eval_flow(_RECIPES["contacts_add"], {"name": "Sam Carter"}),
+    _as_eval_flow(_RECIPES["wikipedia_lookup"], {"topic": "Ada Lovelace"}),
+    _as_eval_flow(_RECIPES["settings_battery"], {}),
+    _as_eval_flow(_RECIPES["calendar_today"], {}),
 ]
