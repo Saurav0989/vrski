@@ -122,6 +122,9 @@ def run_step(sid, step):
     if do == "back":
         post(f"/session/{sid}/action", {"type": "back"})
         return True, ""
+    if do == "scroll_to":
+        post(f"/session/{sid}/action", {"type": "scroll_to", "text": step["text"]})
+        return True, ""
     if do == "assert_text":
         ok, hit = assert_any(sid, step["any"], step.get("timeout", 8))
         return ok, ("" if ok else f"none of {step['any']} appeared")

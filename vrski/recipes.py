@@ -47,7 +47,7 @@ def as_eval_flow(recipe: Recipe, params: Dict[str, Any]) -> Dict[str, Any]:
     """Convert a recipe + concrete params into an eval-harness golden flow."""
     steps = [{"do": "launch", "package": recipe.package, "activity": recipe.launch_activity}]
     steps += render_flow(recipe, params)
-    steps += [{"do": "assert_text", "any": recipe.success_any}]
+    steps += [{"do": "assert_text", "any": [fill(s, params) for s in recipe.success_any]}]
     return {"app": recipe.app, "name": recipe.name, "package": recipe.package, "steps": steps}
 
 
@@ -106,4 +106,57 @@ register(Recipe(
         {"do": "wait_stable"},
     ],
     success_any=["{name}", "Contacts", "Edit contact"],
+))
+
+# --- Phase 5: more verticals, all via recipes (no core changes) --------------
+
+register(Recipe(
+    name="wikipedia_lookup",
+    app="Wikipedia",
+    package="org.wikipedia",
+    launch_activity="org.wikipedia.main.MainActivity",
+    description="Look up {topic} on Wikipedia.",  # Information vertical
+    params=["topic"],
+    flow=[
+        {"do": "dismiss"},
+        {"do": "tap", "content_desc": "Search"},
+        {"do": "wait_stable"},
+        {"do": "tap", "element_id": "org.wikipedia:id/search_card"},
+        {"do": "wait_stable"},
+        {"do": "type", "text": "{topic}"},
+        {"do": "wait_stable"},
+    ],
+    success_any=["{topic}"],
+))
+
+register(Recipe(
+    name="settings_battery",
+    app="Settings",
+    package="com.android.settings",
+    launch_activity="com.android.settings.Settings",
+    description="Open Battery settings.",  # Control vertical
+    params=[],
+    flow=[
+        {"do": "dismiss"},
+        {"do": "scroll_to", "text": "Battery"},
+        {"do": "tap", "text": "Battery"},
+        {"do": "wait_stable"},
+    ],
+    success_any=["Battery usage", "Battery Saver", "Battery percentage", "Adaptive", "Last charge"],
+))
+
+register(Recipe(
+    name="calendar_today",
+    app="Calendar",
+    package="com.google.android.calendar",
+    launch_activity="com.android.calendar.AllInOneActivity",
+    description="Open my calendar agenda.",  # Productivity vertical
+    params=[],
+    # Assumes first-run onboarding is already completed (a one-time owner step,
+    # like the Google sign-in). Asserts on stable agenda controls only.
+    flow=[
+        {"do": "dismiss"},
+        {"do": "wait_stable"},
+    ],
+    success_any=["Jump to Today", "Create new event", "Show date picker", "Search"],
 ))

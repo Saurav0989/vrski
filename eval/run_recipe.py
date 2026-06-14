@@ -17,7 +17,7 @@ import urllib.request
 import urllib.error
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from vrski.recipes import RECIPES, render_flow  # noqa: E402
+from vrski.recipes import RECIPES, render_flow, fill  # noqa: E402
 
 BASE = os.environ.get("VRSKI_API_URL", "http://localhost:7070")
 SER = os.environ.get("VRSKI_EMULATOR_SERIAL", "emulator-5554")
@@ -81,6 +81,10 @@ def run_step(step):
     if do == "back":
         api("POST", f"/session/{SID}/action", {"type": "back"})
         return True, ""
+    if do == "scroll_to":
+        # best-effort scroll toward the target; the following tap validates it
+        api("POST", f"/session/{SID}/action", {"type": "scroll_to", "text": step["text"]})
+        return True, ""
     if do == "assert_text":
         ok, _ = assert_text(step["any"], step.get("timeout", 8))
         return ok, ("" if ok else f"none of {step['any']}")
@@ -116,8 +120,9 @@ def main():
             return 1
         time.sleep(0.3)
 
-    ok, hit = assert_text(rc.success_any, 8)
-    print(f"\nSUCCESS check {rc.success_any}: " + (f"PASS (matched {hit!r})" if ok else "FAIL"))
+    needles = [fill(s, params) for s in rc.success_any]
+    ok, hit = assert_text(needles, 8)
+    print(f"\nSUCCESS check {needles}: " + (f"PASS (matched {hit!r})" if ok else "FAIL"))
     return 0 if ok else 1
 
 
