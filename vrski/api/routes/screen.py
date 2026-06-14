@@ -61,6 +61,11 @@ _NOISE_ID_MARKERS = (
     "statusBarBackground",
 )
 
+# Below this many salient elements, treat the screen as "low signal": the tree
+# probably isn't describing the real content (WebView / Compose / canvas), so we
+# attach a screenshot for the agent to fall back on.
+LOW_SIGNAL_THRESHOLD = 4
+
 
 def _is_salient(el: dict) -> bool:
     """True if an element is worth showing an agent by default.
@@ -102,11 +107,16 @@ def get_screen(
             raise HTTPException(status_code=400, detail=f"Driver not initialized for session {session_id}")
             
         raw_elements = driver.get_tree()
-        elements = [serialize_element(el) for el in raw_elements]
-        raw_element_count = len(elements)
+        serialized = [serialize_element(el) for el in raw_elements]
+        raw_element_count = len(serialized)
+        # A WebView means the meaningful content (article/page body) is almost
+        # certainly NOT in the accessibility tree — vision is required to read it.
+        has_webview = any("WebView" in (e.get("type") or "") for e in serialized)
         # By default return only agent-relevant elements; raw tree via salient=false.
-        if salient:
-            elements = [el for el in elements if _is_salient(el)]
+        elements = [el for el in serialized if _is_salient(el)] if salient else serialized
+        # Few salient elements (or a WebView) = the tree can't describe this screen;
+        # the agent should reason from the screenshot instead.
+        low_signal = len(elements) < LOW_SIGNAL_THRESHOLD
 
         package = "unknown"
         activity = "unknown"
@@ -140,8 +150,11 @@ def get_screen(
                 logger.error(f"Failed to update current app in DB: {db_e}")
                 db.rollback()
 
+        # Vision-backed fallback: attach a screenshot when asked, or automatically
+        # when the tree can't describe the screen (WebView / sparse / Compose).
+        want_screenshot = include_screenshot or has_webview or low_signal
         screenshot_base64 = None
-        if include_screenshot:
+        if want_screenshot:
             if SessionManager.is_simulated(session_id):
                 screenshot_base64 = MOCK_SCREENSHOT_BASE64
             else:
@@ -153,13 +166,25 @@ def get_screen(
                 except Exception as e:
                     logger.warning(f"Failed to capture screenshot: {e}")
                     screenshot_base64 = None
-                    
+
+        vision_hint = None
+        if (has_webview or low_signal) and screenshot_base64:
+            reason = "a WebView" if has_webview else "very few readable elements"
+            vision_hint = (
+                f"This screen has {reason}; its real content may not be in the element "
+                f"tree. A screenshot is attached — reason about the screen visually, and "
+                f"tap by coordinates if you must."
+            )
+
         return {
             "success": True,
             "elements": elements,
             "element_count": len(elements),
             "raw_element_count": raw_element_count,
             "salient": salient,
+            "has_webview": has_webview,
+            "low_signal": low_signal,
+            "vision_hint": vision_hint,
             "package": package,
             "activity": activity,
             "screenshot_base64": screenshot_base64
@@ -241,3 +266,53 @@ async def wait_for_element_route(
     except Exception as e:
         logger.exception("Failed waiting for element")
         raise HTTPException(status_code=500, detail=f"Failed waiting for element: {str(e)}")
+
+
+class StableRequest(BaseModel):
+    timeout: int = Field(10, gt=0, le=60)
+    settle_ms: int = Field(500, ge=0, le=5000)
+    poll_ms: int = Field(400, ge=100, le=3000)
+
+
+@router.post("/session/{id}/wait_stable")
+async def wait_stable_route(
+    req: StableRequest,
+    id: str = Path(..., pattern=r"^[a-zA-Z0-9_\-]+$"),
+    db: DBSession = Depends(get_db)
+):
+    """Blocks until the UI stops changing (two consecutive identical hierarchy
+    dumps), e.g. after launching an app or triggering a screen transition."""
+    try:
+        session = SessionManager.get_session(db, id)
+        if not session:
+            raise HTTPException(status_code=404, detail=f"Session {id} not found")
+        driver = SessionManager.get_driver(id)
+        if not driver:
+            raise HTTPException(status_code=400, detail=f"Driver not initialized for session {id}")
+
+        start = time.time()
+        last_sig = None
+        stable = False
+        polls = 0
+        while time.time() - start < req.timeout:
+            try:
+                xml = await asyncio.to_thread(driver.get_hierarchy_xml)
+            except Exception:
+                xml = None
+            sig = hash(xml) if xml is not None else None
+            polls += 1
+            if sig is not None and sig == last_sig:
+                stable = True
+                break
+            last_sig = sig
+            await asyncio.sleep(req.poll_ms / 1000.0)
+
+        if stable and req.settle_ms:
+            await asyncio.sleep(req.settle_ms / 1000.0)
+
+        return {"success": True, "stable": stable, "elapsed_s": round(time.time() - start, 2), "polls": polls}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Failed waiting for stable screen")
+        raise HTTPException(status_code=500, detail=f"Failed waiting for stable screen: {str(e)}")

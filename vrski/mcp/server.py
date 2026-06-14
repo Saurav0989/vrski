@@ -100,6 +100,40 @@ async def vrski_get_screen(session_id: str, include_screenshot: bool = False, sa
 
 
 @mcp.tool()
+async def vrski_look(session_id: str) -> dict:
+    """Reads the screen AND returns a screenshot together — the vision-backed view.
+
+    Use this on screens the element tree can't describe: WebView pages (article/page
+    bodies), Compose/canvas UIs, games, or any time vrski_get_screen comes back with
+    low_signal=true or has_webview=true. You get the salient element tree plus a
+    base64 screenshot, so you can reason about the screen visually and, if needed,
+    tap by coordinates.
+
+    Args:
+        session_id: The unique identifier for the automation session.
+    """
+    t0 = time.time()
+    result = await client.get(f"/session/{session_id}/screen", params={"include_screenshot": True, "salient": True})
+    _log_tool_call("vrski_look", {}, result, (time.time() - t0) * 1000, session_id)
+    return result
+
+
+@mcp.tool()
+async def vrski_wait_stable(session_id: str, timeout: int = 10, settle_ms: int = 500) -> dict:
+    """Waits until the screen stops changing (two identical UI dumps in a row).
+
+    Use right after launching an app or tapping something that triggers a transition,
+    instead of guessing with a fixed delay. Returns { stable, elapsed_s, polls }.
+
+    Args:
+        session_id: The unique identifier for the automation session.
+        timeout: Max seconds to wait for the screen to settle (default 10).
+        settle_ms: Extra milliseconds to wait once stable, for animations (default 500).
+    """
+    return await client.post(f"/session/{session_id}/wait_stable", json={"timeout": timeout, "settle_ms": settle_ms})
+
+
+@mcp.tool()
 async def vrski_wait_for_element(
     session_id: str, 
     text: Optional[str] = None, 

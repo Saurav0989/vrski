@@ -5,7 +5,7 @@ import base64
 import logging
 import xml.etree.ElementTree as ET
 from typing import List, Optional, Dict, Any, Tuple
-from vrski.ui.element import Bounds, UIElement
+from vrski.ui.element import Bounds, UIElement, is_editable_type
 
 logger = logging.getLogger("vrski.ui.driver")
 
@@ -173,12 +173,8 @@ class DeviceDriver:
                 clickable = attrib.get("clickable", "false").lower() == "true"
                 scrollable = attrib.get("scrollable", "false").lower() == "true"
                 
-                # Deduce editable status
-                editable = (
-                    "EditText" in element_type or 
-                    element_type in ["AutoCompleteTextView", "MultiAutoCompleteTextView", "SearchAutoComplete"] or
-                    attrib.get("focusable", "false").lower() == "true" and "TextView" not in element_type
-                )
+                # Deduce editable status (text-input widget classes only)
+                editable = is_editable_type(element_type)
                 
                 elements.append(UIElement(
                     element_id=element_id,
