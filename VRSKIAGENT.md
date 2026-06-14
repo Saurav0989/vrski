@@ -1,100 +1,123 @@
 # VRSKIAGENT — How an AI Agent Uses Vrski
 
-> **You are an AI agent (Hermes, Claude Code, OpenClaw, …). This file tells you how to control a real Android phone for your owner through Vrski.**
+> **You are an AI agent (Hermes, Claude Code, OpenClaw, …). This file tells you how to control a real Android phone for your owner through Vrski — reliably.**
 
-Your owner has tagged this file because they finished the one-time setup: they cloned Vrski and signed a Google account into the emulator by hand. **That part is done. Do not try to redo it.** Your job starts now.
+Your owner finished the one-time setup: they cloned Vrski and signed a Google account into the emulator **by hand**. **That part is done. Do not redo it, and never ask for their Google password.** Your job starts now.
 
 ---
 
 ## What Vrski gives you
 
-Vrski is an MCP server that exposes a real Android emulator as **tool calls**. You read the screen as structured JSON (the accessibility tree) and act on it by element text or ID — no screenshots, no vision model, no pixel guessing.
+Vrski exposes a real Android device as **MCP tool calls**. It is **semantic-first, vision-backed**:
+
+- **Semantic-first:** you read the screen as a structured JSON list of elements (the accessibility tree) and act by `text` / `content_desc` / `element_id`. No vision model needed for most screens.
+- **Vision-backed:** some screens (WebView pages, parts of Compose UIs, games) barely show up in the tree. Vrski tells you (`has_webview` / `low_signal`) and gives you a screenshot via `vrski_look` so you can reason visually and tap by coordinates. **Semantic when you can, visual when you must.**
 
 ```
-You call  vrski_get_screen()      → JSON list of on-screen elements
-You call  vrski_tap(text="Log in") → Vrski finds it and taps it
-You call  vrski_type(text="...")   → types into the focused field
+vrski_get_screen()  → JSON elements (filtered to what matters) + flags
+vrski_look()        → elements + a screenshot, for screens the tree can't describe
+vrski_tap(text="Log in")  → finds the right element and taps it
+vrski_type(text="…")      → types into the focused field (fails loudly if none)
 ```
 
-The emulator already has your owner's Google account signed in, so the Play Store works and you can install and use any app that has a normal login.
+The emulator already has the owner's Google account signed in, so the Play Store works and you can install apps and complete **"Continue with Google"** logins yourself.
 
 ---
 
-## Step 1 — Wire yourself up (do this once per machine)
-
-The owner ran the sign-in script and is now talking to you. Bring Vrski online:
+## Step 1 — Wire yourself up (once per machine)
 
 ```bash
-# From the repo your owner cloned (usually ~/.hermes/vrski)
-cd ~/.hermes/vrski
-
-# Start the emulator + Vrski control API (boots from the logged-in state)
-bash scripts/start_vrski.sh
+cd ~/.hermes/vrski            # the repo your owner cloned
+bash scripts/start_vrski.sh   # boots the emulator + Vrski control API
 ```
 
-Then register the MCP server with your harness:
+Register the MCP server with your harness:
 
 ```bash
 # Claude Code:
 claude mcp add vrski python -m vrski.mcp.server
-
 # Hermes / any MCP harness — add to your MCP config:
 #   { "mcpServers": { "vrski": { "command": "python", "args": ["-m", "vrski.mcp.server"] } } }
 ```
 
-Confirm you are connected and the account is live:
+Confirm you're connected and the device is ready:
 
 ```
 vrski_start_session("owner")
-vrski_check_setup("owner")     → expect { "ready": true, "signed_in": true, "active_account": "...@gmail.com" }
+vrski_check_setup("owner")
+  → expect { "ready": true, "signed_in": true, "active_account": "…@gmail.com" }
 ```
 
-If `ready` is true, you are fully wired. Proceed.
+`ready: true` means the device is signed in and usable. **Note:** `has_credentials` will be `false` and that is correct — nothing is stored, by design. The account lives on the device. If `ready` is true, proceed.
+
+> `vrski_start_session` is safe to call again — if the API restarted, it re-attaches to the existing session instead of erroring.
 
 ---
 
-## Step 2 — The core loop
+## Step 2 — The reliable core loop
 
-Every task is the same rhythm. **Never act blind — always read first.**
+Every task is the same rhythm. **Never act blind, and never assume an action worked — confirm it.**
 
 ```
-1. vrski_get_screen(session_id)        # see what's actually on screen
-2. decide which element to act on       # by its text / id / content_desc
-3. vrski_tap / vrski_type / vrski_swipe # do one action
-4. go back to 1                          # confirm the result, then continue
+1. vrski_get_screen("owner")        # read what's actually on screen
+2. (if low_signal / has_webview)    # the tree can't describe this screen →
+       vrski_look("owner")          #   get a screenshot, reason visually
+3. decide which element to act on    # by text / content_desc / element_id
+4. vrski_tap / vrski_type / vrski_swipe
+5. vrski_wait_stable("owner")       # let the screen settle after a transition
+6. go back to 1                      # confirm the result, then continue
 ```
 
-After an action that changes screens, use `vrski_wait_for_element(...)` on something you expect next, instead of guessing with a fixed delay.
+What makes it smooth — use these, they're why driving Vrski is reliable:
+
+- **`vrski_wait_stable("owner")` after anything that changes screens** (launching an app, tapping a button that navigates). It blocks until the UI stops changing — far more reliable than a fixed delay.
+- **Trust `screen_changed`.** `vrski_tap` and `vrski_type` return `screen_changed: true/false`. If you expected a transition and it's `false`, you tapped a no-op — **don't repeat the same tap in a loop.** Re-read, `vrski_dismiss_popups`, or `vrski_look` and try a different target.
+- **Tap is disambiguated for you.** If several elements share a label, `vrski_tap` picks the actionable one (a button/list-row over a text field that merely contains the same words) and tells you `matched_count` / `ambiguous`. If `ambiguous` and it chose wrong, tap by `element_id` or coordinates instead.
+- **Type needs a focused field.** `vrski_type` types into whatever is focused. If nothing is, it returns `success: false` with a screenshot — it will **not** silently type into nothing. So: tap the input field first, then `vrski_type`.
+- **`vrski_get_screen` is filtered by default** (`salient=true`) — it drops empty containers, the status bar, and keyboard keys so you see the ~dozen elements that matter, not 100+. Pass `salient=false` if you genuinely need the raw tree.
 
 ---
 
-## Step 3 — Do what your owner asked
+## Step 3 — Logging into apps (read this — it's where agents get stuck)
 
-Examples of real tasks and how they decompose:
+When an app shows a sign-in screen, **call `vrski_check_wall("owner")` first.** It classifies the screen and tells you whether *you* can proceed or a human is required:
 
-**"Install WhatsApp"**
+| `wall` | `human_required` | What you do |
+|--------|------------------|-------------|
+| `login` + `google_sso_available: true` | **false** | **You can do it.** Tap "Continue with Google" (below). |
+| `login` (email/phone only) | true | No agent-completable SSO. Tell the owner. |
+| `otp` | true | A one-time code went to the owner's phone/email. Ask them; don't guess. |
+| `2fa` | true | Google "verify it's you" — only the owner's phone can approve. |
+| `bot_block` | true | An anti-bot / CAPTCHA check (PerimeterX, etc.). **You cannot solve it.** Surface it. |
+| `none` | false | No wall — carry on. |
+
+**"Continue with Google" — you can complete this yourself, no password, no OTP:**
 ```
-vrski_install_app("owner", "com.whatsapp")     # handles Play Store search + Install
-vrski_wait_for_element("owner", text="Open")    # or check vrski_is_installed
+vrski_tap("owner", text="Continue with Google")
+vrski_wait_stable("owner")
+# Android shows an account picker: "Choose an account → to continue to <App>"
+vrski_tap("owner", text="<owner's @gmail.com>")   # select the device account
+vrski_wait_stable("owner")
+# OAuth completes and returns to the app — you're logged in.
 ```
 
-**"Order my usual from the food app"**
+**Reality check on commercial apps (food / ride / banking):** many run **anti-bot detection** and will either refuse to install ("device not compatible") or, right after login, throw a "prove you're not a robot" block. This is **not** something you did wrong and **not** something better tapping fixes — it's the app detecting the environment. When `vrski_check_wall` returns `bot_block`, **stop and tell the owner** (include the screenshot); that app may need a real device. Apps that don't fight automation (messaging, utilities, many services) work great.
+
+### Other common tasks
+
+**"Install <app>"**
 ```
-vrski_launch_app("owner", "<food app package>")
-vrski_get_screen("owner")                        # read the home screen
-vrski_dismiss_popups("owner")                    # clear any welcome dialogs
-vrski_tap("owner", text="Search")
-vrski_type("owner", text="...")
-# ...keep reading + tapping through the flow...
+vrski_install_app("owner", "com.example.app")   # installs from the Play Store
+vrski_is_installed("owner", "com.example.app")   # confirm
 ```
 
-**"Reply to the latest message"**
+**"Reply to the latest message"** (messaging apps are reliable — no anti-bot)
 ```
 vrski_launch_app("owner", "<messaging app>")
-vrski_get_screen("owner")                        # find the chat
+vrski_wait_stable("owner"); vrski_get_screen("owner")
 vrski_tap("owner", text="<contact name>")
-vrski_tap("owner", content_desc="Message")
-vrski_type("owner", text="...")
+vrski_tap("owner", content_desc="Message")       # tap the input field first
+vrski_type("owner", text="…")                    # then type
 vrski_tap("owner", content_desc="Send")
 ```
 
@@ -102,13 +125,14 @@ vrski_tap("owner", content_desc="Send")
 
 ## Golden rules
 
-1. **Read before every action.** Call `vrski_get_screen` first. The screen changes between steps; never assume.
-2. **Prefer text over coordinates.** `vrski_tap(text="Next")` survives layout changes. Raw `x,y` is a last resort.
-3. **A failed tap is data, not a crash.** It returns `{ "success": false, "error": "...", "screenshot_base64": "..." }`. Read it, decide, retry differently.
-4. **Dismiss popups when stuck.** If an expected element isn't there after 2–3 reads, call `vrski_dismiss_popups` and look again.
-5. **Never try to sign into Google yourself.** Google's 2-Step Verification can only be approved by the owner's physical phone. If you find the device signed out (`vrski_check_setup` → `signed_in: false`), **stop and tell the owner**: *"The Google account is signed out. Please run `bash scripts/login.sh` again to sign back in."*
-6. **CAPTCHA / human verification = ask the owner.** If you hit a CAPTCHA or "verify it's you" wall inside any app, surface it. Do not attempt to solve it.
-7. **One session per owner.** Reuse the same `session_id`. End it with `vrski_end_session` only when the work is fully done.
+1. **Read before every action; confirm after.** `vrski_get_screen` first, then check `screen_changed` / re-read. The screen changes between steps — never assume.
+2. **Wait for stable, don't sleep.** Use `vrski_wait_stable` after transitions.
+3. **When the tree is thin, look.** If `low_signal` or `has_webview` is true (or an expected element just isn't there), call `vrski_look` and reason from the screenshot.
+4. **Tap the field before you type.** `vrski_type` only works on a focused input.
+5. **Don't loop on a no-op.** `screen_changed: false` when you expected change = try something different (`vrski_dismiss_popups`, a different element, or `vrski_look`).
+6. **Check the wall before fighting a login.** `vrski_check_wall`. Do "Continue with Google" yourself; hand back `otp` / `2fa` / `bot_block` / CAPTCHA to the owner.
+7. **Never sign into Google yourself, never ask for the owner's password.** If `vrski_check_setup` → `signed_in: false`, tell the owner: *"The Google account is signed out — please run `bash scripts/login.sh`."*
+8. **One session per owner.** Reuse the same `session_id`; `vrski_end_session` only when fully done.
 
 ---
 
@@ -116,17 +140,20 @@ vrski_tap("owner", content_desc="Send")
 
 | Tool | Purpose |
 |------|---------|
-| `vrski_start_session(session_id)` | Begin / attach a session |
-| `vrski_check_setup(session_id)` | Is the device ready & signed in? |
-| `vrski_get_screen(session_id)` | Read on-screen elements as JSON |
-| `vrski_wait_for_element(session_id, text=…)` | Block until an element appears |
-| `vrski_tap(session_id, text=… / element_id=… / content_desc=…)` | Tap an element |
-| `vrski_type(session_id, text=…)` | Type into the focused field |
-| `vrski_swipe(session_id, direction=…)` / `vrski_scroll_to(session_id, text=…)` | Scroll |
+| `vrski_start_session(session_id)` | Begin / re-attach a session (idempotent) |
+| `vrski_check_setup(session_id)` | Is the device ready & signed in? (`ready` true = go) |
+| `vrski_get_screen(session_id, salient=True)` | Read on-screen elements as JSON (+ `has_webview`/`low_signal` flags) |
+| `vrski_look(session_id)` | Elements **+ screenshot** — for WebView/Compose/sparse screens |
+| `vrski_wait_stable(session_id)` | Block until the screen stops changing |
+| `vrski_wait_for_element(session_id, text=…)` | Block until a specific element appears |
+| `vrski_check_wall(session_id)` | Classify a login/verification wall; who must act |
+| `vrski_tap(session_id, text=… / element_id=… / content_desc=…)` | Tap (disambiguated; returns `screen_changed`) |
+| `vrski_type(session_id, text=…)` | Type into the focused field (fails loudly if none) |
+| `vrski_swipe(…)` / `vrski_scroll_to(session_id, text=…)` | Scroll |
 | `vrski_back / vrski_home / vrski_recent_apps(session_id)` | Hardware keys |
 | `vrski_install_app / vrski_launch_app / vrski_close_app / vrski_uninstall_app(session_id, package_name)` | App lifecycle |
 | `vrski_is_installed / vrski_list_installed(session_id)` | Query apps |
-| `vrski_dismiss_popups(session_id)` | Clear blocking dialogs |
+| `vrski_dismiss_popups(session_id)` | Clear blocking dialogs / permission prompts / coachmarks |
 | `vrski_get_playstore_account(session_id)` | Which Google account is active |
 
 Full signatures and return shapes: see `README.md`.
@@ -137,12 +164,14 @@ Full signatures and return shapes: see `README.md`.
 
 | Symptom | What to do |
 |---------|-----------|
-| `vrski_*` calls all fail / connection error | The API/emulator isn't running. Run `bash scripts/start_vrski.sh`. |
+| `vrski_*` calls all fail / connection error | API/emulator isn't running. `bash scripts/start_vrski.sh`. |
 | `vrski_check_setup` → `signed_in: false` | Account signed out. Ask the owner to run `bash scripts/login.sh`. |
-| App shows a login wall you can't pass | Tell the owner; they sign into that app the same way (once). |
-| Emulator stuck / weird state | `bash scripts/reset_session.sh` (this wipes app state, not the Google login). |
-| Element not found repeatedly | `vrski_dismiss_popups`, then `vrski_get_screen` again; the UI may have shifted. |
+| An element you expected isn't in the tree | `vrski_look` (it may be a WebView/Compose screen) and act on the screenshot; or `vrski_dismiss_popups` then re-read. |
+| `screen_changed: false` but you expected a change | You hit a no-op. Try a different element / `vrski_look`; don't repeat the same tap. |
+| App shows a CAPTCHA / "not a robot" / `bot_block` | Anti-bot detection. You can't solve it — surface it to the owner (with the screenshot). |
+| App's own login wall (`otp` / email / phone) | `vrski_check_wall`; hand the human-only part back to the owner. |
+| Emulator stuck / weird state | `bash scripts/reset_session.sh` (wipes app state, keeps the Google login). |
 
 ---
 
-**In one line:** the owner signed in once; you drive the phone from here — read the screen, act by element, ask the owner only when a human-only wall (Google 2FA, CAPTCHA, an app's own login) blocks you.
+**In one line:** the owner signed in once; you drive the phone — read the screen (or `vrski_look` when it's opaque), act by element, `vrski_wait_stable`, confirm with `screen_changed`, do "Continue with Google" logins yourself, and hand back to the owner only at a human-only wall (`otp` / `2fa` / `bot_block` / CAPTCHA).

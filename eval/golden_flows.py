@@ -82,3 +82,18 @@ FLOWS = [
         ],
     },
 ]
+
+# --- Phase 4 recipes, surfaced as golden flows so the harness guards them too ---
+import os as _os  # noqa: E402
+import sys as _sys  # noqa: E402
+_sys.path.insert(0, _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..")))
+from vrski.recipes import RECIPES as _RECIPES, as_eval_flow as _as_eval_flow  # noqa: E402
+
+# Only *idempotent* recipes belong in the regression harness. clock_start_timer is a
+# proven recipe (run it with `eval/run_recipe.py`) but is NOT repeatable here: once it
+# sets a timer the keypad disappears, and clearing a running timer is a destructive
+# action that (correctly) needs owner approval. contacts_add just adds a fresh contact
+# each run, so it guards cleanly.
+FLOWS += [
+    _as_eval_flow(_RECIPES["contacts_add"], {"name": "Sam Carter"}),
+]

@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, model_validator
 from sqlmodel import Session as DBSession
 from vrski.session.db import get_db
 from vrski.session.manager import SessionManager
+from vrski.walls import classify_wall
 
 logger = logging.getLogger("vrski.api.routes.screen")
 
@@ -316,3 +317,49 @@ async def wait_stable_route(
     except Exception as e:
         logger.exception("Failed waiting for stable screen")
         raise HTTPException(status_code=500, detail=f"Failed waiting for stable screen: {str(e)}")
+
+
+@router.get("/session/{id}/wall")
+def check_wall(
+    id: str = Path(..., pattern=r"^[a-zA-Z0-9_\-]+$"),
+    db: DBSession = Depends(get_db)
+):
+    """Classify the current screen as a login/verification wall, flagging human-only
+    walls (CAPTCHA / anti-bot, OTP, 2-Step) that must be handed back to the owner."""
+    try:
+        session = SessionManager.get_session(db, id)
+        if not session:
+            raise HTTPException(status_code=404, detail=f"Session {id} not found")
+        driver = SessionManager.get_driver(id)
+        if not driver:
+            raise HTTPException(status_code=400, detail=f"Driver not initialized for session {id}")
+
+        elements = [serialize_element(el) for el in driver.get_tree()]
+        activity = ""
+        package = ""
+        if hasattr(driver, "app_current"):
+            try:
+                curr = driver.app_current()
+                activity = curr.get("activity", "") or ""
+                package = curr.get("package", "") or ""
+            except Exception:
+                pass
+
+        result = classify_wall(elements, activity, package)
+        result["success"] = True
+        result["activity"] = activity
+        result["package"] = package
+
+        # For human-only walls, attach a screenshot so the agent can show the owner.
+        if result.get("human_required") and not SessionManager.is_simulated(id):
+            try:
+                if hasattr(driver, "get_screenshot_base64"):
+                    result["screenshot_base64"] = driver.get_screenshot_base64()
+            except Exception:
+                result["screenshot_base64"] = None
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Failed to classify wall")
+        raise HTTPException(status_code=500, detail=f"Failed to classify wall: {str(e)}")

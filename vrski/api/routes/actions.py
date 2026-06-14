@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field, model_validator
 from sqlmodel import Session as DBSession
 from vrski.session.db import get_db
 from vrski.session.manager import SessionManager
+from vrski.control import ControlManager, classify_action
 
 logger = logging.getLogger("vrski.api.routes.actions")
 
@@ -126,6 +127,72 @@ def _signature(tree) -> Optional[int]:
     except Exception:
         return None
 
+
+def do_semantic_tap(driver, session_id: str, text, element_id, content_desc, bypass_gate: bool = False) -> dict:
+    """Find the best-matching element and tap it — through the trust gate.
+
+    Sensitive taps (pay/send/delete/…) return `approval_required` instead of
+    executing, unless `bypass_gate` (the owner already approved via /approve).
+    """
+    tree = driver.get_tree()
+    candidates = find_tap_candidates(tree, text, element_id, content_desc)
+    if not candidates:
+        return {
+            "success": False, "matched_element": None, "matched_count": 0,
+            "error": f"Element not found: text={text}, id={element_id}, desc={content_desc}",
+            "screenshot_base64": _capture_screenshot(driver),
+        }
+
+    matched = max(candidates, key=_tap_rank)
+    m_text, m_id, m_desc, _, _ = _el_fields(matched)
+    label = m_text or m_desc or m_id or "element"
+
+    if not bypass_gate:
+        decision = ControlManager.gate(session_id, "tap", m_text, m_desc)
+        d = decision["decision"]
+        if d == "blocked":
+            ControlManager.audit(session_id, {"kind": "tap_blocked", "target": label, "reason": decision.get("reason")})
+            return {"success": False, "blocked": True, "reason": decision.get("reason"),
+                    "message": decision.get("message"), "matched_element": m_id,
+                    "screenshot_base64": _capture_screenshot(driver)}
+        if d == "dry_run":
+            ControlManager.audit(session_id, {"kind": "tap_dry_run", "target": label, "category": decision.get("category")})
+            return {"success": True, "dry_run": True, "would": f"tap '{label}'",
+                    "category": decision.get("category"), "matched_element": m_id, "screen_changed": False}
+        if d == "approval":
+            pid = ControlManager.create_pending(
+                session_id,
+                {"text": text, "element_id": element_id, "content_desc": content_desc},
+                {"what": f"tap '{label}'", "category": decision.get("category")},
+            )
+            ControlManager.audit(session_id, {"kind": "approval_required", "pending_id": pid,
+                                              "target": label, "category": decision.get("category")})
+            return {"success": False, "approval_required": True, "pending_id": pid,
+                    "what": f"tap '{label}'", "category": decision.get("category"), "matched_element": m_id,
+                    "message": (f"Owner approval required to tap '{label}'. Surface this to the owner; "
+                                f"on their yes, call vrski_approve(pending_id). Do not bypass it."),
+                    "screenshot_base64": _capture_screenshot(driver)}
+
+    # Allowed (or owner-approved): execute.
+    before_sig = _signature(tree)
+    res = driver.tap(matched)
+    after_sig = _signature(driver.get_tree())
+    sensitive = classify_action("tap", m_text, m_desc)["sensitive"]
+    if sensitive:
+        ControlManager.note_sensitive_executed(session_id)
+    ControlManager.audit(session_id, {"kind": "tap", "target": label, "sensitive": sensitive, "approved": bypass_gate})
+    result = {
+        "success": res.get("success", True) if isinstance(res, dict) else True,
+        "matched_element": m_id,
+        "matched_count": len(candidates),
+    }
+    if before_sig is not None and after_sig is not None:
+        result["screen_changed"] = before_sig != after_sig
+    if len(candidates) > 1:
+        result["ambiguous"] = True
+    return result
+
+
 @router.post("/session/{id}/action")
 def execute_action(
     action: ActionRequest,
@@ -144,8 +211,13 @@ def execute_action(
         if not driver:
             raise HTTPException(status_code=400, detail=f"Driver not initialized for session {session_id}")
             
+        # Kill-switch: a paused session blocks every action until resumed.
+        if ControlManager.get(session_id).paused:
+            return {"success": False, "blocked": True, "reason": "paused",
+                    "message": "Session is paused by the owner. Call vrski_resume to continue."}
+
         if action.type == "tap":
-            # 1. Coordinate tap
+            # 1. Coordinate tap (no label to classify; pause already enforced).
             if action.x is not None and action.y is not None:
                 if hasattr(driver, "tap_coordinates"):
                     driver.tap_coordinates(action.x, action.y)
@@ -158,38 +230,11 @@ def execute_action(
                         driver.tap({"bounds": {"left": action.x, "top": action.y, "right": action.x, "bottom": action.y}})
                 else:
                     raise HTTPException(status_code=400, detail="Driver does not support coordinate taps")
+                ControlManager.audit(session_id, {"kind": "tap_coords", "x": action.x, "y": action.y})
                 return {"success": True, "matched_element": None}
 
-            # 2. Semantic element tap — gather all matches, then pick the best target.
-            tree = driver.get_tree()
-            candidates = find_tap_candidates(tree, action.text, action.element_id, action.content_desc)
-            if not candidates:
-                screenshot_b64 = _capture_screenshot(driver)
-                return {
-                    "success": False,
-                    "matched_element": None,
-                    "matched_count": 0,
-                    "error": f"Element not found: text={action.text}, id={action.element_id}, desc={action.content_desc}",
-                    "screenshot_base64": screenshot_b64,
-                }
-
-            # When several elements share the same label, prefer the actionable
-            # target over an input field that merely echoes the text.
-            before_sig = _signature(tree)
-            matched = max(candidates, key=_tap_rank)
-            res = driver.tap(matched)
-            matched_id = matched.get("id") if isinstance(matched, dict) else getattr(matched, "element_id", getattr(matched, "id", None))
-            after_sig = _signature(driver.get_tree())
-            result = {
-                "success": res.get("success", True) if isinstance(res, dict) else True,
-                "matched_element": matched_id,
-                "matched_count": len(candidates),
-            }
-            if before_sig is not None and after_sig is not None:
-                result["screen_changed"] = before_sig != after_sig
-            if len(candidates) > 1:
-                result["ambiguous"] = True
-            return result
+            # 2. Semantic element tap — classified, gated, audited.
+            return do_semantic_tap(driver, session_id, action.text, action.element_id, action.content_desc)
             
         elif action.type == "type":
             if action.text is None:
@@ -204,6 +249,7 @@ def execute_action(
                     "screenshot_base64": _capture_screenshot(driver),
                 }
             after_sig = _signature(driver.get_tree())
+            ControlManager.audit(session_id, {"kind": "type", "chars": len(action.text or "")})
             out = {"success": True}
             if before_sig is not None and after_sig is not None:
                 out["screen_changed"] = before_sig != after_sig

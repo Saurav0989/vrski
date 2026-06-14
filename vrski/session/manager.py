@@ -159,25 +159,23 @@ class MockDriver:
 
 class SessionManager:
     @staticmethod
-    def start_session(db: DBSession, session_id: str, emulator_serial: Optional[str] = None) -> Session:
-        statement = select(Session).where(Session.id == session_id)
-        session = db.exec(statement).first()
-        if session:
-            raise ValueError(f"Session {session_id} already exists")
-        
-        serial = emulator_serial or os.getenv("VRSKI_EMULATOR_SERIAL", "emulator-5554")
+    def _init_drivers(session_id: str, serial: str) -> None:
+        """Creates and registers the in-memory driver + adb client for a session.
+
+        Shared by start_session (new session) and reattach_session (an existing
+        session row whose live drivers were lost, e.g. after an API restart).
+        """
         simulate = os.getenv("VRSKI_SIMULATE", "false").lower() in ("true", "1", "yes")
-        
         driver = None
         adb_client = None
-        
+
         if not simulate:
             try:
                 if UIDriver is not None:
                     driver = UIDriver(serial)
                 else:
                     logger.warning("UIDriver not available, falling back to mock driver.")
-                    
+
                 if ADBClient is not None:
                     adb_client = ADBClient(serial)
                 else:
@@ -187,7 +185,7 @@ class SessionManager:
                 simulate = True
 
         if simulate or driver is None or adb_client is None:
-            logger.info(f"Starting session {session_id} in simulated mode.")
+            logger.info(f"Session {session_id} using simulated drivers.")
             driver = MockDriver(serial)
             adb_client = MockADBClient(serial)
             _simulated_sessions[session_id] = True
@@ -196,7 +194,26 @@ class SessionManager:
 
         _active_drivers[session_id] = driver
         _active_adb_clients[session_id] = adb_client
-        
+
+    @staticmethod
+    def reattach_session(session_id: str, emulator_serial: Optional[str] = None) -> None:
+        """Re-bind a live driver/adb client to an existing session row whose
+        in-memory drivers were lost (e.g. the API process restarted). Does not
+        touch the DB row — the session simply becomes usable again."""
+        serial = emulator_serial or os.getenv("VRSKI_EMULATOR_SERIAL", "emulator-5554")
+        logger.info(f"Re-attaching drivers to existing session {session_id} ({serial}).")
+        SessionManager._init_drivers(session_id, serial)
+
+    @staticmethod
+    def start_session(db: DBSession, session_id: str, emulator_serial: Optional[str] = None) -> Session:
+        statement = select(Session).where(Session.id == session_id)
+        session = db.exec(statement).first()
+        if session:
+            raise ValueError(f"Session {session_id} already exists")
+
+        serial = emulator_serial or os.getenv("VRSKI_EMULATOR_SERIAL", "emulator-5554")
+        SessionManager._init_drivers(session_id, serial)
+
         session = Session(
             id=session_id,
             emulator_serial=serial,

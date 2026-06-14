@@ -14,6 +14,7 @@ import sys
 import time
 import json
 import argparse
+import subprocess
 import urllib.request
 import urllib.error
 
@@ -21,6 +22,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from golden_flows import FLOWS  # noqa: E402
 
 BASE = os.environ.get("VRSKI_API_URL", "http://localhost:7070")
+SER = os.environ.get("VRSKI_EMULATOR_SERIAL", "emulator-5554")
+
+
+def _adb(*a):
+    return subprocess.run(["adb", "-s", SER] + list(a), capture_output=True, text=True).stdout
 
 
 def _req(method, path, body=None, timeout=90):
@@ -84,7 +90,11 @@ def run_step(sid, step):
     if do == "launch":
         post(f"/session/{sid}/close", {"package_name": step["package"]})
         time.sleep(0.8)
-        post(f"/session/{sid}/launch", {"package_name": step["package"]})
+        if step.get("activity"):
+            # explicit activity via adb is more reliable than monkey on this emulator
+            _adb("shell", "am", "start", "-n", f"{step['package']}/{step['activity']}")
+        else:
+            post(f"/session/{sid}/launch", {"package_name": step["package"]})
         return True, ""
     if do == "wait_stable":
         post(f"/session/{sid}/wait_stable", {"timeout": step.get("timeout", 10), "settle_ms": step.get("settle_ms", 400)})

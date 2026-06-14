@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from vrski.session.db import init_db
-from vrski.api.routes import session, screen, actions, apps, setup
+from vrski.api.routes import session, screen, actions, apps, setup, control
 
 try:
     from vrski.utils.logging import configure_logging
@@ -67,6 +67,7 @@ app.include_router(screen.router, tags=["screen"])
 app.include_router(actions.router, tags=["actions"])
 app.include_router(apps.router, tags=["apps"])
 app.include_router(setup.router, tags=["setup"])
+app.include_router(control.router, tags=["control"])
 
 
 @app.post("/session/{id}/dismiss_popups", tags=["actions"])
