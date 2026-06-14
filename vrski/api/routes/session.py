@@ -12,11 +12,21 @@ class StartSessionRequest(BaseModel):
 @router.post("/start")
 def start_session(req: StartSessionRequest, db: DBSession = Depends(get_db)):
     try:
-        # Check if session already exists
+        # If the session row already exists, re-attach a live driver if its
+        # in-memory drivers were lost (e.g. the API restarted) instead of erroring.
         existing = SessionManager.get_session(db, req.session_id)
         if existing:
-            raise HTTPException(status_code=400, detail=f"Session {req.session_id} already exists")
-            
+            reattached = SessionManager.get_driver(req.session_id) is None
+            if reattached:
+                SessionManager.reattach_session(req.session_id, existing.emulator_serial)
+            return {
+                "success": True,
+                "session_id": existing.id,
+                "status": existing.status,
+                "emulator_serial": existing.emulator_serial,
+                "reattached": reattached,
+            }
+
         session = SessionManager.start_session(db, req.session_id)
         return {
             "success": True,

@@ -177,12 +177,13 @@ def test_api_negative_cases():
     assert response.status_code == 200
     assert response.json()["success"] is True
     
-    # Start session with same ID again
+    # Start session with same ID again — now idempotent: it re-attaches a live
+    # driver to the existing session (e.g. after an API restart) instead of erroring.
     response = client.post("/session/start", json={"session_id": "neg_session_1"})
-    assert response.status_code == 400
+    assert response.status_code == 200
     res_data = response.json()
-    assert res_data["success"] is False
-    assert "already exists" in res_data["error"]
+    assert res_data["success"] is True
+    assert res_data["session_id"] == "neg_session_1"
     
     # 2. Nonexistent session actions
     # Status check

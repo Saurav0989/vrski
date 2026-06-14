@@ -134,6 +134,25 @@ async def vrski_wait_stable(session_id: str, timeout: int = 10, settle_ms: int =
 
 
 @mcp.tool()
+async def vrski_check_wall(session_id: str) -> dict:
+    """Classify the current screen as a login / verification 'wall'.
+
+    Detects HUMAN-ONLY walls the agent must hand back rather than defeat: anti-bot /
+    CAPTCHA blocks (PerimeterX, DataDome, reCAPTCHA, …), one-time codes (OTP), and
+    Google 2-Step. Also detects login screens and whether they offer 'Continue with
+    Google' — which the agent CAN complete using the device's existing account.
+
+    Returns { wall: 'bot_block'|'otp'|'2fa'|'login'|'none', human_required: bool,
+    reason, message, ... }. Call it when you land on a sign-in/verification screen,
+    or whenever progress stalls. If human_required is true, stop and tell the owner.
+
+    Args:
+        session_id: The unique identifier for the automation session.
+    """
+    return await client.get(f"/session/{session_id}/wall")
+
+
+@mcp.tool()
 async def vrski_wait_for_element(
     session_id: str, 
     text: Optional[str] = None, 

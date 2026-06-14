@@ -93,7 +93,21 @@ def check_setup_status(session_id: str = Query(...)):
         signed_in = account_info.get("signed_in", False)
         active_account = account_info.get("account")
 
-    ready = saved and (signed_in or not driver_available)
+    # The secure default is the human-login flow (scripts/login.sh): the Google
+    # account lives on the device and NOTHING is stored. So a live, signed-in
+    # device is ready — stored credentials are neither required nor recommended.
+    ready = bool(driver_available and signed_in)
+
+    if ready:
+        next_step = None
+    elif not driver_available:
+        next_step = "Start a session first (vrski_start_session), then re-check."
+    else:  # driver available but not signed in
+        next_step = (
+            "The device is signed out. Ask the owner to run `bash scripts/login.sh` "
+            "to sign in by hand (recommended — nothing is stored). "
+            "Do NOT ask for or store the owner's Google password."
+        )
 
     return {
         "ready": ready,
@@ -102,10 +116,5 @@ def check_setup_status(session_id: str = Query(...)):
         "signed_in": signed_in,
         "active_account": active_account,
         "driver_available": driver_available,
-        "next_step": (
-            None if ready
-            else "call vrski_setup(session_id, email, password) with owner's Google credentials"
-            if not saved
-            else "call vrski_signin_playstore(session_id) to authenticate with saved credentials"
-        ),
+        "next_step": next_step,
     }
