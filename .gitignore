@@ -44,3 +44,6 @@ install_result.json
 .DS_Store
 **/.DS_Store
 Thumbs.db
+
+# ── Private planning docs (keep local, never publish) ───────
+plans/
