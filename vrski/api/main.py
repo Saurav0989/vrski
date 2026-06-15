@@ -1,11 +1,12 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Depends
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from vrski.session.db import init_db
+from sqlmodel import Session as DBSession
+from vrski.session.db import init_db, get_db
 from vrski.api.routes import session, screen, actions, apps, setup, control
 
 try:
@@ -81,6 +82,14 @@ def dismiss_popups_route(id: str):
         return {"success": False, "error": f"No driver for session {id}"}
     dismissed = dismiss_popups(id)
     return {"success": True, "dismissed": dismissed}
+
+
+@app.get("/sessions", tags=["session"])
+def list_sessions_route(db: DBSession = Depends(get_db)):
+    """Lists all sessions with their bound device, status, current app, and whether a
+    live driver is attached — for managing multiple concurrent sessions/devices."""
+    from vrski.session.manager import SessionManager
+    return {"success": True, "sessions": SessionManager.list_sessions(db)}
 
 
 @app.exception_handler(RequestValidationError)

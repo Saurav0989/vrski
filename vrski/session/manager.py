@@ -278,3 +278,23 @@ class SessionManager:
     @staticmethod
     def is_simulated(session_id: str) -> bool:
         return _simulated_sessions.get(session_id, False)
+
+    @staticmethod
+    def has_live_driver(session_id: str) -> bool:
+        return _active_drivers.get(session_id) is not None
+
+    @staticmethod
+    def list_sessions(db: DBSession) -> list:
+        """All sessions with their bound device, status, and live-driver state."""
+        rows = db.exec(select(Session)).all()
+        return [
+            {
+                "session_id": s.id,
+                "emulator_serial": s.emulator_serial,
+                "status": s.status,
+                "current_app": s.current_app,
+                "live": _active_drivers.get(s.id) is not None,
+                "simulated": _simulated_sessions.get(s.id, False),
+            }
+            for s in rows
+        ]

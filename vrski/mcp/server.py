@@ -50,13 +50,27 @@ mcp = FastMCP("vrski", lifespan=mcp_lifespan)
 
 
 @mcp.tool()
-async def vrski_start_session(session_id: str) -> dict:
-    """Starts a new automation session or connects to an existing one.
-    
+async def vrski_start_session(session_id: str, emulator_serial: Optional[str] = None) -> dict:
+    """Starts a new automation session or re-attaches to an existing one.
+
     Args:
         session_id: The unique identifier for the automation session.
+        emulator_serial: Optional ADB serial to bind this session to a specific
+            device/emulator (e.g. 'emulator-5554', or a real device serial). Omit to
+            use the server default. This is how you run multiple isolated sessions
+            across multiple devices on one host.
     """
-    return await client.post("/session/start", json={"session_id": session_id})
+    body = {"session_id": session_id}
+    if emulator_serial is not None:
+        body["emulator_serial"] = emulator_serial
+    return await client.post("/session/start", json=body)
+
+
+@mcp.tool()
+async def vrski_list_sessions() -> dict:
+    """Lists all automation sessions with their bound device, status, current app, and
+    whether a live driver is attached. Use it to manage multiple concurrent sessions."""
+    return await client.get("/sessions")
 
 
 @mcp.tool()

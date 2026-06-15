@@ -1,3 +1,4 @@
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Path
 from pydantic import BaseModel
 from sqlmodel import Session as DBSession
@@ -8,6 +9,7 @@ router = APIRouter(prefix="/session")
 
 class StartSessionRequest(BaseModel):
     session_id: str
+    emulator_serial: Optional[str] = None
 
 @router.post("/start")
 def start_session(req: StartSessionRequest, db: DBSession = Depends(get_db)):
@@ -18,7 +20,7 @@ def start_session(req: StartSessionRequest, db: DBSession = Depends(get_db)):
         if existing:
             reattached = SessionManager.get_driver(req.session_id) is None
             if reattached:
-                SessionManager.reattach_session(req.session_id, existing.emulator_serial)
+                SessionManager.reattach_session(req.session_id, req.emulator_serial or existing.emulator_serial)
             return {
                 "success": True,
                 "session_id": existing.id,
@@ -27,7 +29,7 @@ def start_session(req: StartSessionRequest, db: DBSession = Depends(get_db)):
                 "reattached": reattached,
             }
 
-        session = SessionManager.start_session(db, req.session_id)
+        session = SessionManager.start_session(db, req.session_id, emulator_serial=req.emulator_serial)
         return {
             "success": True,
             "session_id": session.id,
