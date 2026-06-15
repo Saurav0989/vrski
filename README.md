@@ -49,6 +49,19 @@ screenshot fallback when the tree can't describe a screen.
 
 ---
 
+## Install
+
+```bash
+pip install vrski        # the runtime: control API + MCP server
+```
+
+Then do the one-time device setup (create the AVD, sign into Google once) — see
+[`GUIDE.md`](./GUIDE.md) — and wire Vrski to your harness — see [`INTEGRATIONS.md`](./INTEGRATIONS.md).
+
+> Hacking on Vrski itself? Clone the repo and `pip install -e .[dev]` instead.
+
+---
+
 ## Why This Matters for Agent Harnesses
 
 | Capability | Vision-based (screenshots) | Vrski (semantic) |
