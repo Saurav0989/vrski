@@ -81,6 +81,9 @@ def run_step(step):
     if do == "back":
         api("POST", f"/session/{SID}/action", {"type": "back"})
         return True, ""
+    if do == "enter":
+        api("POST", f"/session/{SID}/action", {"type": "enter"})
+        return True, ""
     if do == "scroll_to":
         # best-effort scroll toward the target; the following tap validates it
         api("POST", f"/session/{SID}/action", {"type": "scroll_to", "text": step["text"]})
@@ -106,7 +109,8 @@ def main():
     adb("shell", "am", "force-stop", rc.package)
     time.sleep(1)
     if rc.launch_activity:
-        adb("shell", "am", "start", "-n", f"{rc.package}/{rc.launch_activity}")
+        # escape $ so the device shell doesn't expand it (e.g. Shell$HomeActivity)
+        adb("shell", "am", "start", "-n", f"{rc.package}/{rc.launch_activity}".replace("$", "\\$"))
     else:
         adb("shell", "monkey", "-p", rc.package, "-c", "android.intent.category.LAUNCHER", "1")
     api("POST", f"/session/{SID}/wait_stable", {"timeout": 18, "settle_ms": 1500})

@@ -99,4 +99,11 @@ FLOWS += [
     _as_eval_flow(_RECIPES["wikipedia_lookup"], {"topic": "Ada Lovelace"}),
     _as_eval_flow(_RECIPES["settings_battery"], {}),
     _as_eval_flow(_RECIPES["calendar_today"], {}),
+    _as_eval_flow(_RECIPES["settings_storage"], {}),
+    _as_eval_flow(_RECIPES["contacts_search"], {"query": "Alex"}),
+    _as_eval_flow(_RECIPES["keep_search"], {"query": "milk"}),
+    _as_eval_flow(_RECIPES["maps_search"], {"place": "coffee"}),
+    _as_eval_flow(_RECIPES["gmail_search"], {"query": "Google"}),
+    _as_eval_flow(_RECIPES["youtube_search"], {"query": "lofi"}),
+    _as_eval_flow(_RECIPES["chrome_open_url"], {"url": "wikipedia.org"}),
 ]
