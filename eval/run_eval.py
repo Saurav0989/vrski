@@ -92,7 +92,8 @@ def run_step(sid, step):
         time.sleep(0.8)
         if step.get("activity"):
             # explicit activity via adb is more reliable than monkey on this emulator
-            _adb("shell", "am", "start", "-n", f"{step['package']}/{step['activity']}")
+            # (escape $ so the device shell doesn't expand e.g. Shell$HomeActivity)
+            _adb("shell", "am", "start", "-n", f"{step['package']}/{step['activity']}".replace("$", "\\$"))
         else:
             post(f"/session/{sid}/launch", {"package_name": step["package"]})
         return True, ""
@@ -124,6 +125,9 @@ def run_step(sid, step):
         return True, ""
     if do == "scroll_to":
         post(f"/session/{sid}/action", {"type": "scroll_to", "text": step["text"]})
+        return True, ""
+    if do == "enter":
+        post(f"/session/{sid}/action", {"type": "enter"})
         return True, ""
     if do == "assert_text":
         ok, hit = assert_any(sid, step["any"], step.get("timeout", 8))

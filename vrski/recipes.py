@@ -160,3 +160,177 @@ register(Recipe(
     ],
     success_any=["Jump to Today", "Create new event", "Show date picker", "Search"],
 ))
+
+# --- more Settings sections (same proven pattern as settings_battery) --------
+
+register(Recipe(
+    name="settings_storage",
+    app="Settings",
+    package="com.android.settings",
+    launch_activity="com.android.settings.Settings",
+    description="Open Storage settings.",
+    params=[],
+    flow=[
+        {"do": "dismiss"},
+        {"do": "scroll_to", "text": "Storage"},
+        {"do": "tap", "text": "Storage"},
+        {"do": "wait_stable"},
+    ],
+    success_any=["used", "Free up space", "Storage", "GB", "Apps"],
+))
+
+register(Recipe(
+    name="settings_display",
+    app="Settings",
+    package="com.android.settings",
+    launch_activity="com.android.settings.Settings",
+    description="Open Display settings.",
+    params=[],
+    flow=[
+        {"do": "dismiss"},
+        {"do": "scroll_to", "text": "Display"},
+        {"do": "tap", "text": "Display"},
+        {"do": "wait_stable"},
+    ],
+    success_any=["Brightness", "Dark theme", "Screen timeout", "Wallpaper", "Colors"],
+))
+
+register(Recipe(
+    name="settings_apps",
+    app="Settings",
+    package="com.android.settings",
+    launch_activity="com.android.settings.Settings",
+    description="Open the Apps settings list.",
+    params=[],
+    flow=[
+        {"do": "dismiss"},
+        {"do": "scroll_to", "text": "Apps"},
+        {"do": "tap", "text": "Apps"},
+        {"do": "wait_stable"},
+    ],
+    success_any=["See all", "recently opened", "Default apps", "Screen time", "Apps"],
+))
+
+# --- Clock stopwatch (Utility); Contacts search (People) --------------------
+
+register(Recipe(
+    name="clock_stopwatch",
+    app="Clock",
+    package="com.google.android.deskclock",
+    launch_activity="com.android.deskclock.DeskClock",
+    description="Start the stopwatch.",
+    params=[],
+    flow=[
+        {"do": "dismiss"},
+        {"do": "tap", "content_desc": "Stopwatch"},
+        {"do": "wait_stable"},
+        {"do": "tap", "content_desc": "Start"},
+        {"do": "wait_stable"},
+    ],
+    success_any=["Lap", "Stop", "Pause", "Reset"],
+))
+
+register(Recipe(
+    name="contacts_search",
+    app="Contacts",
+    package="com.google.android.contacts",
+    launch_activity="com.google.android.apps.contacts.activities.PeopleActivity",
+    description="Search contacts for {query}.",
+    params=["query"],
+    flow=[
+        {"do": "dismiss"},
+        {"do": "tap", "text": "Search contacts"},
+        {"do": "wait_stable"},
+        {"do": "type", "text": "{query}"},
+        {"do": "wait_stable"},
+    ],
+    success_any=["{query}"],
+))
+
+# --- named apps (Notes / Web / Maps / Mail / Media) -------------------------
+
+register(Recipe(
+    name="keep_search",
+    app="Keep",
+    package="com.google.android.keep",
+    launch_activity="com.google.android.keep.activities.BrowseActivity",
+    description="Search your Keep notes for {query}.",  # Notes / Productivity
+    params=["query"],
+    flow=[
+        {"do": "dismiss"},
+        {"do": "tap", "text": "Search Keep"},
+        {"do": "wait_stable"},
+        {"do": "type", "text": "{query}"},
+        {"do": "wait_stable"},
+    ],
+    success_any=["{query}", "Search"],
+))
+
+register(Recipe(
+    name="chrome_open_url",
+    app="Chrome",
+    package="com.android.chrome",
+    launch_activity="com.google.android.apps.chrome.Main",
+    description="Open {url} in Chrome.",  # Web
+    params=["url"],
+    flow=[
+        {"do": "dismiss"},
+        {"do": "tap", "text": "Search or type web address"},
+        {"do": "wait_stable"},
+        {"do": "type", "text": "{url}"},
+        {"do": "enter"},
+        {"do": "wait_stable"},
+    ],
+    success_any=["{url}"],
+))
+
+register(Recipe(
+    name="maps_search",
+    app="Maps",
+    package="com.google.android.apps.maps",
+    launch_activity="com.google.android.maps.MapsActivity",
+    description="Search Google Maps for {place}.",  # Navigation
+    params=["place"],
+    flow=[
+        {"do": "dismiss"},
+        {"do": "tap", "content_desc": "Search here"},
+        {"do": "wait_stable"},
+        {"do": "type", "text": "{place}"},
+        {"do": "wait_stable"},
+    ],
+    success_any=["{place}"],
+))
+
+register(Recipe(
+    name="gmail_search",
+    app="Gmail",
+    package="com.google.android.gm",
+    launch_activity="com.google.android.gm.ConversationListActivityGmail",
+    description="Search Gmail for {query}.",  # Mail / Communication
+    params=["query"],
+    flow=[
+        {"do": "dismiss"},
+        {"do": "tap", "text": "Search in mail"},
+        {"do": "wait_stable"},
+        {"do": "type", "text": "{query}"},
+        {"do": "wait_stable"},
+    ],
+    success_any=["{query}"],
+))
+
+register(Recipe(
+    name="youtube_search",
+    app="YouTube",
+    package="com.google.android.youtube",
+    launch_activity="com.google.android.youtube.app.honeycomb.Shell$HomeActivity",
+    description="Search YouTube for {query}.",  # Media
+    params=["query"],
+    flow=[
+        {"do": "dismiss"},
+        {"do": "tap", "content_desc": "Search"},
+        {"do": "wait_stable"},
+        {"do": "type", "text": "{query}"},
+        {"do": "wait_stable"},
+    ],
+    success_any=["{query}"],
+))

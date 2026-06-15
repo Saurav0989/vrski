@@ -45,15 +45,22 @@ python3 eval/run_recipe.py contacts_add     --param name="Alex Rivera"
 python3 eval/run_recipe.py wikipedia_lookup --param topic="Ada Lovelace"
 ```
 
-## Current recipes (5 verticals)
+## Current recipes (15, across 10 apps)
 
-| Recipe | App | Vertical |
-|--------|-----|----------|
+| Recipe(s) | App | Vertical |
+|-----------|-----|----------|
 | `wikipedia_lookup` | Wikipedia | Information |
-| `settings_battery` | Settings | Control |
+| `contacts_add`, `contacts_search` | Contacts | People |
 | `calendar_today` | Calendar | Productivity |
-| `contacts_add` | Contacts | People |
-| `clock_start_timer` | Clock | Utility |
+| `clock_start_timer`, `clock_stopwatch` | Clock | Utility |
+| `settings_battery`, `settings_storage`, `settings_display`, `settings_apps` | Settings | Control |
+| `keep_search` | Keep | Notes |
+| `maps_search` | Maps | Navigation |
+| `gmail_search` | Gmail | Mail |
+| `youtube_search` | YouTube | Media |
+| `chrome_open_url` | Chrome | Web |
+
+Every one is verified live on a real device; the idempotent ones also run in the eval harness.
 
 ## Contribute a recipe
 

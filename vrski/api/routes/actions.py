@@ -22,7 +22,7 @@ def _capture_screenshot(driver) -> Optional[str]:
     return None
 
 class ActionRequest(BaseModel):
-    type: Literal["tap", "type", "swipe", "scroll_to", "back", "home", "recent_apps"]
+    type: Literal["tap", "type", "swipe", "scroll_to", "back", "home", "recent_apps", "enter"]
     
     # Tap / Scroll target parameters
     text: Optional[str] = None
@@ -298,7 +298,17 @@ def execute_action(
             else:
                 raise HTTPException(status_code=400, detail="Recent apps action not supported by driver or adb client")
             return {"success": True}
-            
+
+        elif action.type == "enter":
+            if adb_client and hasattr(adb_client, "key_event"):
+                adb_client.key_event(66)  # KEYCODE_ENTER — submit a search / URL / form
+            elif hasattr(driver, "press"):
+                driver.press("enter")
+            else:
+                raise HTTPException(status_code=400, detail="Enter not supported by driver or adb client")
+            ControlManager.audit(session_id, {"kind": "enter"})
+            return {"success": True}
+
         else:
             raise HTTPException(status_code=400, detail=f"Unknown action type: {action.type}")
             
