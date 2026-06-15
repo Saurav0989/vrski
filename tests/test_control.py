@@ -143,3 +143,25 @@ def test_blocked_label_never_executes_even_via_route():
     r = do_semantic_tap(drv, sid, "Delete", None, None)
     assert r.get("blocked") is True and r.get("reason") == "blocked_label"
     assert drv.taps == []
+
+
+# --- Phase 6: per-session isolation -----------------------------------------
+
+def test_sessions_have_independent_policy_and_pause():
+    ControlManager.set_policy("iso_a", dry_run=True)
+    ControlManager.set_paused("iso_a", True)
+    a, b = ControlManager.get("iso_a"), ControlManager.get("iso_b")
+    assert a.policy.dry_run is True and a.paused is True
+    assert b.policy.dry_run is False and b.paused is False
+    # the gate reflects each session's own state — no cross-talk
+    assert ControlManager.gate("iso_a", "tap", "Search")["decision"] == "blocked"  # paused
+    assert ControlManager.gate("iso_b", "tap", "Search")["decision"] == "allow"
+
+
+def test_audit_log_is_per_session():
+    ControlManager.audit("iso_x", {"kind": "x_event"})
+    ControlManager.audit("iso_y", {"kind": "y_event"})
+    ax = ControlManager.read_audit("iso_x")
+    ay = ControlManager.read_audit("iso_y")
+    assert any(e.get("kind") == "x_event" for e in ax)
+    assert not any(e.get("kind") == "x_event" for e in ay)

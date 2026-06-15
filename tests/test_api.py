@@ -342,3 +342,23 @@ def test_api_new_validations():
 
     # End session
     client.post("/session/val_session/end")
+
+
+def test_list_sessions_and_per_device_serial():
+    from vrski.session.db import engine
+    from sqlmodel import SQLModel
+    SQLModel.metadata.drop_all(engine)
+    init_db()
+
+    client.post("/session/start", json={"session_id": "ls1"})
+    client.post("/session/start", json={"session_id": "ls2", "emulator_serial": "emulator-9999"})
+
+    r = client.get("/sessions")
+    assert r.status_code == 200
+    by_id = {s["session_id"]: s for s in r.json()["sessions"]}
+    assert {"ls1", "ls2"} <= set(by_id)
+    # ls2 was bound to a specific device serial (multi-device support)
+    assert by_id["ls2"]["emulator_serial"] == "emulator-9999"
+
+    client.post("/session/ls1/end")
+    client.post("/session/ls2/end")
