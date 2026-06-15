@@ -5,15 +5,53 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "vrski"
 version = "0.1.0"
-description = "Agent-native Android runtime — give your AI agent a real phone via MCP. Reads the UI as JSON, acts by element. No screenshots, no vision model."
+description = "Agent-native Android runtime — give your AI agent a real phone via MCP. Semantic-first (reads the UI as JSON, acts by element), vision-backed, with owner-approval for sensitive actions."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Saurav0989" }]
 keywords = ["ai-agents", "android", "mcp", "hermes", "automation", "uiautomator", "accessibility"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Topic :: Software Development :: Testing",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["vrski*"]
+dependencies = [
+    "uiautomator2>=2.16.23",
+    "fastapi>=0.111.0",
+    "uvicorn[standard]>=0.29.0",
+    "python-multipart>=0.0.9",
+    "sqlmodel>=0.0.18",
+    "aiosqlite>=0.20.0",
+    "mcp>=1.0.0",
+    "httpx>=0.27.0",
+    "pydantic>=2.7.0",
+    "structlog>=24.1.0",
+    "tenacity>=8.3.0",
+    "python-dotenv>=1.0.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.2.0", "pytest-asyncio>=0.23.6", "build>=1.0", "twine>=5.0"]
+
+[project.urls]
+Homepage = "https://github.com/Saurav0989/vrski"
+Repository = "https://github.com/Saurav0989/vrski"
+Issues = "https://github.com/Saurav0989/vrski/issues"
 
 [project.scripts]
 vrski-api = "vrski.api.main:run"
 vrski-mcp = "vrski.mcp.server:run"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["vrski*"]
