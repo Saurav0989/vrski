@@ -23,8 +23,29 @@ Agent calls vrski_get_screen()
 | Read this | If you are… |
 |-----------|-------------|
 | **[`GUIDE.md`](./GUIDE.md)** | A human setting up Vrski for the first time. Clone → sign in once → hand off to your agent. **Start here.** |
-| **[`VRSKIAGENT.md`](./VRSKIAGENT.md)** | An AI agent (Hermes / Claude Code / OpenClaw). How to wire in and drive the phone. The owner tags this for you. |
-| **`README.md`** (this file) | A developer who wants the full picture — architecture, every MCP tool, the REST API, and integration paths. |
+| **[`VRSKIAGENT.md`](./VRSKIAGENT.md)** | An AI agent (Hermes / Claude Code / OpenClaw). How to drive the phone *reliably*. The owner tags this for you. |
+| **[`INTEGRATIONS.md`](./INTEGRATIONS.md)** | Wiring Vrski into your harness (Claude Code, Hermes, any MCP). |
+| **[`RECIPES.md`](./RECIPES.md)** | The recipe format — teach Vrski a new app/task with no core code. |
+| **[`HARD_MODE.md`](./HARD_MODE.md)** | Why food/ride/banking apps resist automation, and our *detect-don't-evade* stance. |
+| **[`DEPLOYMENT.md`](./DEPLOYMENT.md)** | Multiple devices on one host, and driving a **real** Android phone. |
+| **[`CONTRIBUTING.md`](./CONTRIBUTING.md)** | Add a recipe; the no-evasion rule; running the tests. |
+| **`README.md`** (this file) | The full picture — architecture, every MCP tool, the REST API. |
+
+## What Vrski is (and isn't)
+
+**Vrski is the agent's reliable hands for the long tail of Android** — every app with no API
+that doesn't actively fight automation: messaging, calendar, notes, information, settings, and
+the owner's own accounts. It reads the screen's *meaning* and acts by element, with a
+screenshot fallback when the tree can't describe a screen.
+
+- ✅ **What works:** operating everyday apps end to end. The reliability harness drives real
+  tasks across **6 apps / 5 verticals at 100%** (`eval/run_eval.py`) — look something up, add a
+  contact, open your calendar, start a timer, change a setting.
+- 🔐 **Trust, always:** anything sensitive (pay / send / delete) is **gated behind owner
+  approval**, with a full audit log and a kill-switch.
+- 🚧 **What it won't do:** beat anti-bot / CAPTCHA / device-integrity systems. The apps that
+  deploy those (food, ride, banking) are "hard mode" — they need a real device and a human at
+  the wall, and Vrski **detects and hands back; it never evades** (see [`HARD_MODE.md`](./HARD_MODE.md)).
 
 ---
 
